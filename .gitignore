@@ -1,0 +1,17 @@
+# dependencias
+node_modules/
+
+# build
+dist/
+
+# envs sensibles
+.env
+.env.local
+.env.production
+.env.development
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
