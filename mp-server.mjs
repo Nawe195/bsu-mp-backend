@@ -1,84 +1,61 @@
 // @ts-nocheck
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import { MercadoPagoConfig, Preference } from "mercadopago";
-import { createClient } from "@supabase/supabase-js";
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { createClient } from '@supabase/supabase-js';
 
-// 🔹 Cargar variables de entorno
 dotenv.config();
 
-// 🔹 URL del frontend (producción o localhost)
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-
-// 🔹 Logs de debug para verificar envs en Railway
-console.log("=== ENV DEBUG (MP Backend) ===");
-console.log("FRONTEND_URL:", FRONTEND_URL);
-console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
-console.log(
-  "SUPABASE_SERVICE_ROLE_KEY presente?",
-  !!process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-console.log("MP_ACCESS_TOKEN presente?", !!process.env.MP_ACCESS_TOKEN);
-console.log("================================");
-
-// 🔹 Validaciones básicas (si falta algo, que rompa CLARO)
-if (!process.env.SUPABASE_URL) {
-  throw new Error("Falta SUPABASE_URL en las variables de entorno");
-}
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY en las variables de entorno");
-}
-if (!process.env.MP_ACCESS_TOKEN) {
-  throw new Error("Falta MP_ACCESS_TOKEN en las variables de entorno");
-}
-
-// 🔹 Inicializar Express
 const app = express();
 
-// 🔹 CORS (frontend en Hostinger + localhost para pruebas)
-app.use(
-  cors({
-    origin: [
-      FRONTEND_URL,          // Producción (Hostinger)
-      "http://localhost:5173" // Dev
-    ],
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
-
+// 🔓 CORS súper abierto (por ahora)
+app.use(cors());
 app.use(express.json());
 
-// 🔹 Manejar preflight OPTIONS explícitamente
-app.options("/api/create-preference", cors());
+// 🔹 DEBUG de entorno
+console.log('=== ENV DEBUG (MP Backend) ===');
+console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL);
+console.log(
+  'SUPABASE_SERVICE_ROLE_KEY presente?',
+  !!process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+console.log('MP_ACCESS_TOKEN presente?', !!process.env.MP_ACCESS_TOKEN);
+console.log('================================');
 
-// 🔹 Cliente admin de Supabase (solo backend)
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// 🔹 Configurar Mercado Pago SDK
 const mpClient = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN,
+  accessToken: process.env.MP_ACCESS_TOKEN || '',
 });
 
-// 🔹 Endpoint para crear preferencia
-app.post("/api/create-preference", async (req, res) => {
+// Ruta simple para probar que el back responde
+app.get('/', (req, res) => {
+  res.send('MP backend OK');
+});
+
+// 🔹 Crear preferencia
+app.post('/api/create-preference', async (req, res) => {
   try {
+    console.log('🌐 POST /api/create-preference');
+    console.log('Origin:', req.headers.origin);
+    console.log('Body recibido:', req.body);
+
     const { items, payer, shippingData, shippingCost, total } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "No hay items en el carrito" });
+      return res.status(400).json({ error: 'No hay items en el carrito' });
     }
 
-    // Normalizar items para MP
     const parsedItems = items.map((item) => ({
       title: item.title,
       unit_price: Number(item.unit_price),
       quantity: Number(item.quantity),
-      currency_id: "ARS",
+      currency_id: 'ARS',
     }));
 
     const preference = new Preference(mpClient);
@@ -91,18 +68,19 @@ app.post("/api/create-preference", async (req, res) => {
           email: payer?.email,
         },
         back_urls: {
-          success: `${FRONTEND_URL}/checkout-success`,
-          pending: `${FRONTEND_URL}/checkout-pending`,
-          failure: `${FRONTEND_URL}/checkout-failure`,
+          success: `${process.env.FRONTEND_URL}/checkout-success`,
+          pending: `${process.env.FRONTEND_URL}/checkout-pending`,
+          failure: `${process.env.FRONTEND_URL}/checkout-failure`,
         },
-        auto_return: "approved",
+        auto_return: 'approved',
       },
     });
 
-    // Guardar orden en Supabase
-    await supabase.from("orders").insert({
+    console.log('✅ Preferencia creada:', preferenceResponse.id);
+
+    await supabase.from('orders').insert({
       preference_id: preferenceResponse.id,
-      status: "pending",
+      status: 'pending',
       total_amount: total,
       shipping_cost: shippingCost,
       customer_name: shippingData?.name,
@@ -111,22 +89,20 @@ app.post("/api/create-preference", async (req, res) => {
       address: shippingData?.address,
       city: shippingData?.city,
       province: shippingData?.province,
-      items: parsedItems, // JSONB
+      items: parsedItems,
     });
 
-    // Responder al frontend
     return res.json({
       id: preferenceResponse.id,
       init_point: preferenceResponse.init_point,
     });
   } catch (error) {
-    console.error("❌ Error creando preferencia:", error);
-    return res.status(500).json({ error: error.message || "Error interno" });
+    console.error('❌ Error creando preferencia:', error);
+    return res.status(500).json({ error: error.message });
   }
 });
 
-// 🔹 Levantar servidor
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log("Backend MP corriendo en puerto", PORT);
+  console.log('Backend MP corriendo en puerto', PORT);
 });
