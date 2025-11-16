@@ -7,35 +7,37 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
-// 🔹 Variables dinámicas
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
-console.log("MP_ACCESS_TOKEN cargado?", !!process.env.MP_ACCESS_TOKEN);
-console.log("FRONTEND_URL:", FRONTEND_URL);
+const app = express();
 
-// 🔹 Supabase admin (backend)
+// 💥 CORS CONFIG CORRECTO
+app.use(cors({
+  origin: [
+    FRONTEND_URL,
+    "http://localhost:5173"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+}));
+
+app.use(express.json());
+
+// Para preflight OPTIONS
+app.options('/api/create-preference', cors());
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// 🔹 MP client
 const mpClient = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN || "",
 });
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// 🔹 Crear preferencia
 app.post('/api/create-preference', async (req, res) => {
   try {
     const { items, payer, shippingData, shippingCost, total } = req.body;
-
-    if (!items || items.length === 0) {
-      return res.status(400).json({ error: 'No hay items en el carrito' });
-    }
 
     const parsedItems = items.map(item => ({
       title: item.title,
@@ -62,7 +64,6 @@ app.post('/api/create-preference', async (req, res) => {
       }
     });
 
-    // Guardar orden en DB
     await supabase.from('orders').insert({
       preference_id: preferenceResponse.id,
       status: "pending",
@@ -77,14 +78,14 @@ app.post('/api/create-preference', async (req, res) => {
       items: parsedItems
     });
 
-    return res.json({
+    res.json({
       id: preferenceResponse.id,
       init_point: preferenceResponse.init_point
     });
 
   } catch (error) {
     console.error("❌ Error creando preferencia:", error);
-    return res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
