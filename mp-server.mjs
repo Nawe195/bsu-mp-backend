@@ -34,6 +34,17 @@ const mpClient = new MercadoPagoConfig({
 });
 
 // Ruta simple para probar que el back responde
+// justo después de app.use(express.json());
+
+app.get('/', (req, res) => {
+  res.send('MP backend OK');
+});
+
+app.get('/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+
 app.get('/', (req, res) => {
   res.send('MP backend OK');
 });
